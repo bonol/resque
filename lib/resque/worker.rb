@@ -579,7 +579,7 @@ module Resque
 
     # are we paused?
     def paused?
-      @paused
+      @paused || redis.get('pause-all-workers').to_s.strip.downcase == 'true'
     end
 
     # Stop processing jobs after the current one has completed (if we're
@@ -697,9 +697,9 @@ module Resque
 
       kill_background_threads
 
-      data_store.unregister_worker(self) do
-        Stat.clear("processed:#{self}")
-        Stat.clear("failed:#{self}")
+      data_store.unregister_worker(self) do |**opts|
+        Stat.clear("processed:#{self}", **opts)
+        Stat.clear("failed:#{self}",    **opts)
       end
     rescue Exception => exception_while_unregistering
       message = exception_while_unregistering.message
@@ -726,8 +726,8 @@ module Resque
     # Called when we are done working - clears our `working_on` state
     # and tells Redis we processed a job.
     def done_working
-      data_store.worker_done_working(self) do
-        processed!
+      data_store.worker_done_working(self) do |**opts|
+        processed!(**opts)
       end
     end
 
@@ -745,9 +745,9 @@ module Resque
     end
 
     # Tell Redis we've processed a job.
-    def processed!
-      Stat << "processed"
-      Stat << "processed:#{self}"
+    def processed!(**opts)
+      Stat.incr("processed",         1, **opts)
+      Stat.incr("processed:#{self}", 1, **opts)
     end
 
     # How many failed jobs has this worker seen? Returns an int.
